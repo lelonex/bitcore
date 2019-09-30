@@ -8,20 +8,52 @@
       }
     },
     "chains": {
-      "BTC": {
-        "regtest": {
+      "ZCL": {
+        "mainnet": {
           "chainSource": "p2p",
           "trustedPeers": [
             {
-              "host": "bitcoin",
-              "port": 8332
-            }
-          ],
+              "host": "192.168.1.239",
+              "port": 8033
+	    },
+	    {
+              "host": "206.189.210.19",
+              "port": 8033
+	    },
+	    {
+              "host": "54.37.81.148",
+              "port": 8033
+	    },
+	    {
+              "host": "167.114.159.30",
+              "port": 8033
+	    },
+	    {
+              "host": "52.53.98.72",
+              "port": 8033
+	    },
+	    {
+              "host": "178.63.71.183",
+              "port": 8033
+	    },
+	    {
+              "host": "159.65.179.43",
+              "port": 8033
+	    },
+	    {
+              "host": "176.99.6.205",
+              "port": 8033
+	    },
+	    {
+              "host": "46.128.1.157",
+              "port": 8033
+	    }
+	  ],	
           "rpc": {
-            "host": "bitcoin",
-            "port": 8333,
-            "username": "bitcorenodetest",
-            "password": "local321"
+            "host": "192.168.1.239",
+            "port": 8023,
+            "username": "zclassic",
+            "password": "zclassic"
           }
         }
       }

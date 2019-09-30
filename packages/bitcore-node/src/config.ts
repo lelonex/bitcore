@@ -54,14 +54,14 @@ const Config = function(): ConfigType {
   let config: ConfigType = {
     maxPoolSize: 50,
     port: 3000,
-    dbHost: process.env.DB_HOST || '127.0.0.1',
-    dbName: process.env.DB_NAME || 'bitcore',
+    dbHost: process.env.DB_HOST || '192.168.1.24',
+    dbName: process.env.DB_NAME || 'zclassic',
     dbPort: process.env.DB_PORT || '27017',
     dbUser: process.env.DB_USER || '',
     dbPass: process.env.DB_PASS || '',
     numWorkers: cpus().length,
     chains: {},
-    modules: ['./bitcoin', './bitcoin-cash', './ethereum'],
+    modules: ['./bitcoin', './bitcoin-cash', './ethereum', './zclassic'],
     services: {
       api: {
         rateLimiter: {
