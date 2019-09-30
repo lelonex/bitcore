@@ -1,0 +1,45 @@
+{
+  "name": "zclassic-bitcore-p2p",
+  "version": "8.8.4",
+  "description": "Interface to the Zclassic P2P network for bitcore",
+  "main": "index.js",
+  "scripts": {
+    "lint": "gulp lint",
+    "test": "gulp test",
+    "test:ci": "npm run test",
+    "coverage": "gulp coverage",
+    "build": "gulp",
+    "pub": "npm run build && npm publish"
+  },
+  "keywords": [
+    "zclassic",
+    "bitcore"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bitpay/bitcore-p2p.git"
+  },
+  "dependencies": {
+    "bcoin": "1.0.0-beta.12",
+    "zclassic-bitcore-lib": "^8.8.2",
+    "bloom-filter": "^0.2.0",
+    "buffers": "bitpay/node-buffers#v0.1.2-bitpay",
+    "socks5-client": "^0.3.6"
+  },
+  "devDependencies": {
+    "bitcore-build": "^8.8.2",
+    "base58-native": "^0.1.4",
+    "bignum": "^0.13.0",
+    "brfs": "^1.2.0",
+    "chai": "~1.10.0",
+    "gulp": "^4.0.0",
+    "sinon": "^1.12.2",
+    "merkle-bitcoin": "^1.0.2",
+    "bitgo-utxo-lib":"^1.6.0",
+    "promise": "^8.0.1",
+    "equihashjs-verify": "1.0.5",
+    "verushash": "git+https://github.com/VerusCoin/verushash-node#e6572f345b8c24e4a1212f6c9eb66c1c400d83e1"
+  },
+  "license": "MIT",
+  "gitHead": "012cc0216a9bc6b195035855bd17149bad41acd1"
+}
