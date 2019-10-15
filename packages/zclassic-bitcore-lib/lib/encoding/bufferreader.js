@@ -18,7 +18,7 @@ var BufferReader = function BufferReader(buf) {
     });
   } else if (_.isString(buf)) {
     this.set({
-      buf: new Buffer(buf, 'hex'),
+      buf: Buffer.from(buf, 'hex'),
     });
   } else if (_.isObject(buf)) {
     var obj = buf;
@@ -111,6 +111,29 @@ BufferReader.prototype.readUInt64LEBN = function() {
   return bn;
 };
 
+BufferReader.onesComplement = function(number) {
+  number = ~number;
+  if (number < 0) {
+    number = (number & 0x7FFFFFFF) + 0x80000000;
+  }
+  return number
+}
+
+BufferReader.prototype.readInt64LEBN = function() {
+  var second = this.buf.readUInt32LE(this.pos);
+  var first = this.buf.readUInt32LE(this.pos + 4);
+  var bn;
+  if ((first & 0x80000000) !== 0) {
+    first = BufferReader.onesComplement(first);
+    second = BufferReader.onesComplement(second);
+    bn = new BN(first).mul(new BN(0x100000000)).add(new BN(second + 1)).neg();
+  } else {
+    bn = new BN(first).mul(new BN(0x100000000)).add(new BN(second));
+  }
+  this.pos = this.pos + 8;
+  return bn;
+}
+
 BufferReader.prototype.readVarintNum = function() {
   var first = this.readUInt8();
   switch (first) {
@@ -172,7 +195,7 @@ BufferReader.prototype.readVarintBN = function() {
 };
 
 BufferReader.prototype.reverse = function() {
-  var buf = new Buffer(this.buf.length);
+  var buf = Buffer.alloc(this.buf.length);
   for (var i = 0; i < buf.length; i++) {
     buf[i] = this.buf[this.buf.length - 1 - i];
   }

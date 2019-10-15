@@ -75,7 +75,7 @@ function HDPrivateKey(arg) {
 HDPrivateKey.isValidPath = function(arg, hardened) {
   if (_.isString(arg)) {
     var indexes = HDPrivateKey._getDerivationIndexes(arg);
-    return indexes !== null && _.all(indexes, HDPrivateKey.isValidPath);
+    return indexes !== null && _.every(indexes, HDPrivateKey.isValidPath);
   }
 
   if (_.isNumber(arg)) {
@@ -100,11 +100,11 @@ HDPrivateKey._getDerivationIndexes = function(path) {
   var steps = path.split('/');
 
   // Special cases:
-  if (_.contains(HDPrivateKey.RootElementAlias, path)) {
+  if (_.includes(HDPrivateKey.RootElementAlias, path)) {
     return [];
   }
 
-  if (!_.contains(HDPrivateKey.RootElementAlias, steps[0])) {
+  if (!_.includes(HDPrivateKey.RootElementAlias, steps[0])) {
     return null;
   }
 
@@ -124,7 +124,7 @@ HDPrivateKey._getDerivationIndexes = function(path) {
     return index;
   });
 
-  return _.any(indexes, isNaN) ? null : indexes;
+  return _.some(indexes, isNaN) ? null : indexes;
 };
 
 /**
@@ -411,7 +411,7 @@ HDPrivateKey.prototype._buildFromBuffers = function(arg) {
   var network = Network.get(BufferUtil.integerFromBuffer(arg.version));
   var xprivkey;
   xprivkey = Base58Check.encode(buffer.Buffer.concat(sequence));
-  arg.xprivkey = new Buffer(xprivkey);
+  arg.xprivkey = Buffer.from(xprivkey);
 
   var privateKey = new PrivateKey(BN.fromBuffer(arg.privateKey), network);
   var publicKey = privateKey.toPublicKey();

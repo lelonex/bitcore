@@ -27,6 +27,8 @@ var PrivateKey = require('../privatekey');
 var BN = require('../crypto/bn');
 
 var JSDescription = require('./jsdescription');
+var ShieldedSpend = require('./shieldedspend');
+var ShieldedOutput = require('./shieldedoutput');
 
 /**
  * Represents a transaction, a set of inputs and outputs to change ownership of tokens
@@ -40,6 +42,8 @@ function Transaction(serialized) {
   }
   this.inputs = [];
   this.outputs = [];
+  this.vShieldedSpend = [];
+  this.vShieldedOutput = [];
   this.joinSplits = [];
   this._inputAmount = undefined;
   this._outputAmount = undefined;
@@ -123,6 +127,26 @@ ioProperty.get = function() {
   return this._getOutputAmount();
 };
 Object.defineProperty(Transaction.prototype, 'outputAmount', ioProperty);
+
+Object.defineProperty(Transaction.prototype, 'valueBalance', {
+  configurable: false,
+  enumerable: true,
+  get: function() {
+    return this._valueBalance;
+  },
+  set: function(num) {
+    if (num instanceof BN) {
+      this._valueBalanceBN = num;
+      this._valueBalance = num.toNumber();
+    } else if (_.isString(num)) {
+      this._valueBalance = parseInt(num);
+      this._valueBalanceBN = BN.fromNumber(this._valueBalance);
+    } else {
+      this._valueBalanceBN = BN.fromNumber(num);
+      this._valueBalance = num;
+    }
+  }
+});
 
 /**
  * Retrieve the little endian hash of the transaction (used for serialization)
@@ -282,7 +306,19 @@ Transaction.prototype.toBuffer = function() {
 };
 
 Transaction.prototype.toBufferWriter = function(writer) {
-  writer.writeUInt32LE(this.version);
+  if (!this.fOverwintered) {
+    writer.writeUInt32LE(this.version);
+  } else {
+    // We don't use bitwise operators which expect 32 bit operands and return a 32 bit signed integer.
+    // For example, var header = 0x80000000 | this.version; returns -7fffffff (-2147483645).
+    var header = 0x80000000 + this.version;
+    writer.writeUInt32LE(header);
+  }
+
+  if (this.fOverwintered) {
+    writer.writeUInt32LE(this.nVersionGroupId);
+  }
+
   writer.writeVarintNum(this.inputs.length);
   _.each(this.inputs, function(input) {
     input.toBufferWriter(writer);
@@ -292,15 +328,37 @@ Transaction.prototype.toBufferWriter = function(writer) {
     output.toBufferWriter(writer);
   });
   writer.writeUInt32LE(this.nLockTime);
+
+  if (this.fOverwintered) {
+    writer.writeUInt32LE(this.nExpiryHeight);
+  }
+
+  if (this.version >= 4) {
+    writer.writeInt64LEBN(this._valueBalanceBN);
+    writer.writeVarintNum(this.vShieldedSpend.length);
+    _.each(this.vShieldSpend, function(spend) {
+      spend.toBufferWriter(writer);
+    });
+    writer.writeVarintNum(this.vShieldedOutput.length);
+    _.each(this.vShieldOutput, function(output) {
+      output.toBufferWriter(writer);
+    });
+  }
+
   if (this.version >= 2) {
     writer.writeVarintNum(this.joinSplits.length);
+    var version = this.version;
     _.each(this.joinSplits, function(jsdesc) {
-      jsdesc.toBufferWriter(writer);
+      jsdesc.toBufferWriter(writer, version);
     });
     if (this.joinSplits.length > 0) {
       writer.write(this.joinSplitPubKey);
       writer.write(this.joinSplitSig);
     }
+  }
+
+  if (this.version >= 4 && !(this.vShieldedSpend.length == 0 && this.vShieldedOutput.length == 0)) {
+    writer.write(this.bindingSig);
   }
   return writer;
 };
@@ -313,8 +371,23 @@ Transaction.prototype.fromBuffer = function(buffer) {
 Transaction.prototype.fromBufferReader = function(reader) {
   $.checkArgument(!reader.finished(), 'No transaction data received');
   var i, sizeTxIns, sizeTxOuts, sizeJSDescs;
+  var sizeShieldedSpend, sizeShieldedOutput;
+  var header = reader.readUInt32LE();
 
-  this.version = reader.readUInt32LE();
+  this.fOverwintered = ((header >>> 31) == 1);
+  if (this.fOverwintered == true) {
+    this.version = header & 0x7fffffff;
+  } else {
+    this.version = header;
+  }
+  if (this.version >= 4) {
+    this.fSaplinged = true
+  }
+
+  if (this.version >= 3 ){
+      this.nVersionGroupId = reader.readUInt32LE();
+  }
+
   sizeTxIns = reader.readVarintNum();
   for (i = 0; i < sizeTxIns; i++) {
     var input = Input.fromBufferReader(reader);
@@ -324,16 +397,40 @@ Transaction.prototype.fromBufferReader = function(reader) {
   for (i = 0; i < sizeTxOuts; i++) {
     this.outputs.push(Output.fromBufferReader(reader));
   }
+
   this.nLockTime = reader.readUInt32LE();
+
+  if (this.version >= 3) {
+      this.nExpiryHeight = reader.readUInt32LE();
+  }
+
+  this.vShieldedSpend = []
+  this.vShieldedOutput = []
+  if (this.version >= 4) {
+    this.valueBalance = reader.readInt64LEBN();
+    sizeShieldedSpend = reader.readVarintNum();
+    for (i = 0; i < sizeShieldedSpend; i++) {
+      this.vShieldedSpend.push(ShieldedSpend.fromBufferReader(reader));
+    }
+    sizeShieldedOutput = reader.readVarintNum();
+    for (i = 0; i < sizeShieldedOutput; i++) {
+      this.vShieldedOutput.push(ShieldedOutput.fromBufferReader(reader));
+    }
+  }
+
   if (this.version >= 2) {
     sizeJSDescs = reader.readVarintNum();
     for (i = 0; i < sizeJSDescs; i++) {
-      this.joinSplits.push(JSDescription.fromBufferReader(reader));
+      this.joinSplits.push(JSDescription.fromBufferReader(reader, this.version));
     }
     if (sizeJSDescs > 0) {
       this.joinSplitPubKey = reader.read(32);
       this.joinSplitSig = reader.read(64);
     }
+  }
+
+  if (this.version >= 4 && !(this.vShieldedSpend.length == 0 && this.vShieldedOutput.length == 0)) {
+      this.bindingSig = reader.read(64);
   }
   return this;
 };
@@ -347,17 +444,43 @@ Transaction.prototype.toObject = Transaction.prototype.toJSON = function toObjec
   this.outputs.forEach(function(output) {
     outputs.push(output.toObject());
   });
+  if (this.version >= 4) {
+    this.fSaplinged = true
+  }
   var obj = {
     hash: this.hash,
+    fOverwintered: this.fOverwintered,
+    fSaplinged: this.fSaplinged,
     version: this.version,
     inputs: inputs,
     outputs: outputs,
     nLockTime: this.nLockTime
   };
+
+  if (this.fOverwintered) {
+    obj.nVersionGroupId = this.nVersionGroupId;
+    obj.nExpiryHeight = this.nExpiryHeight;
+  }
+
+  if (this.version >= 4) {
+    obj.valueBalance = this.valueBalance;
+    var shieldedSpends= [];
+    this.vShieldedSpend.forEach(function(shieldedSpend) {
+      shieldedSpends.push(shieldedSpend.toObject());
+    });
+    obj.vShieldedSpend = shieldedSpends;
+    var shieldedOutputs= [];
+    this.vShieldedOutput.forEach(function(shieldedOutput) {
+      shieldedOutputs.push(shieldedOutput.toObject());
+    });
+    obj.vShieldedOutput = shieldedOutputs;
+  }
+
   if (this.version >= 2) {
     var joinSplits = [];
+    var version = this.version;
     this.joinSplits.forEach(function(joinSplit) {
-      joinSplits.push(joinSplit.toObject());
+      joinSplits.push(joinSplit.toObject(version));
     });
     obj.joinSplits = joinSplits;
     if (this.joinSplits.length > 0) {
@@ -365,6 +488,10 @@ Transaction.prototype.toObject = Transaction.prototype.toJSON = function toObjec
       obj.joinSplitSig = this.joinSplitSig.toString('hex');
     }
   }
+  if (this.version >= 4 && !(this.vShieldedSpend.length == 0 && this.vShieldedOutput.length == 0)) {
+    obj.bindingSig = this.bindingSig.toString('hex');
+  }
+
   if (this._changeScript) {
     obj.changeScript = this._changeScript.toString();
   }
@@ -421,14 +548,37 @@ Transaction.prototype.fromObject = function fromObject(arg) {
   }
   this.nLockTime = transaction.nLockTime;
   this.version = transaction.version;
+
+  this.fOverwintered = transaction.fOverwintered;
+  this.fSaplinged = transaction.fSaplinged;
+  if (this.fOverwintered) {
+    this.nExpiryHeight = transaction.nExpiryHeight;
+    this.nVersionGroupId = transaction.nVersionGroupId;
+  }
+
+  if (this.version >= 4) {
+    this.valueBalance = obj.valueBalance;
+    _.each(transaction.vShieldedSpend, function(spend) {
+      self.vShieldedSpend.push(new ShieldedSpend(spend));
+    });
+    _.each(transaction.vShieldedOutput, function(output) {
+      self.vShieldedOutput.push(new ShieldedOutput(output));
+    });
+  }
+
   if (this.version >= 2) {
+    var version = this.version;
     _.each(transaction.joinSplits, function(joinSplit) {
-      self.joinSplits.push(new JSDescription(joinSplit));
+      self.joinSplits.push(new JSDescription(joinSplit, version));
     });
     if (self.joinSplits.length > 0) {
-      self.joinSplitPubKey = BufferUtil.reverse(new Buffer(transaction.joinSplitPubKey, 'hex'));
-      self.joinSplitSig = new Buffer(transaction.joinSplitSig, 'hex');
+      self.joinSplitPubKey = BufferUtil.reverse(Buffer.from(transaction.joinSplitPubKey, 'hex'));
+      self.joinSplitSig = Buffer.from(transaction.joinSplitSig, 'hex');
     }
+  }
+
+  if (this.version >= 4 && !(this.vShieldedSpend.length == 0 && this.vShieldedOutput.length == 0)) {
+    this.bindingSig = transaction.bindingSig;
   }
   this._checkConsistency(arg);
   return this;
@@ -517,7 +667,7 @@ Transaction.prototype.getLockTime = function() {
 };
 
 Transaction.prototype.fromString = function(string) {
-  this.fromBuffer(new buffer.Buffer(string, 'hex'));
+  this.fromBuffer(buffer.Buffer.from(string, 'hex'));
 };
 
 Transaction.prototype._newTransaction = function() {
@@ -575,8 +725,11 @@ Transaction.prototype._newTransaction = function() {
  * @param {(Array.<Transaction~fromObject>|Transaction~fromObject)} utxo
  * @param {Array=} pubkeys
  * @param {number=} threshold
+ * @param {Object=} opts - Several options:
+ *        - noSorting: defaults to false, if true and is multisig, don't
+ *          sort the given public keys before creating the script
  */
-Transaction.prototype.from = function(utxo, pubkeys, threshold) {
+Transaction.prototype.from = function(utxo, pubkeys, threshold, opts) {
   if (_.isArray(utxo)) {
     var self = this;
     _.each(utxo, function(utxo) {
@@ -584,7 +737,7 @@ Transaction.prototype.from = function(utxo, pubkeys, threshold) {
     });
     return this;
   }
-  var exists = _.any(this.inputs, function(input) {
+  var exists = _.some(this.inputs, function(input) {
     // TODO: Maybe prevTxId should be a string? Or defined as read only property?
     return input.prevTxId.toString('hex') === utxo.txId && input.outputIndex === utxo.outputIndex;
   });
@@ -592,7 +745,7 @@ Transaction.prototype.from = function(utxo, pubkeys, threshold) {
     return this;
   }
   if (pubkeys && threshold) {
-    this._fromMultisigUtxo(utxo, pubkeys, threshold);
+    this._fromMultisigUtxo(utxo, pubkeys, threshold, opts);
   } else {
     this._fromNonP2SH(utxo);
   }
@@ -620,7 +773,7 @@ Transaction.prototype._fromNonP2SH = function(utxo) {
   }));
 };
 
-Transaction.prototype._fromMultisigUtxo = function(utxo, pubkeys, threshold) {
+Transaction.prototype._fromMultisigUtxo = function(utxo, pubkeys, threshold, opts) {
   $.checkArgument(threshold <= pubkeys.length,
     'Number of required signatures must be greater than the number of public keys');
   var clazz;
@@ -640,7 +793,7 @@ Transaction.prototype._fromMultisigUtxo = function(utxo, pubkeys, threshold) {
     prevTxId: utxo.txId,
     outputIndex: utxo.outputIndex,
     script: Script.empty()
-  }, pubkeys, threshold));
+  }, pubkeys, threshold, false, opts));
 };
 
 /**
@@ -690,7 +843,7 @@ Transaction.prototype.uncheckedAddInput = function(input) {
  * @return {boolean}
  */
 Transaction.prototype.hasAllUtxoInfo = function() {
-  return _.all(this.inputs.map(function(input) {
+  return _.every(this.inputs.map(function(input) {
     return !!input.output;
   }));
 };
@@ -1145,7 +1298,7 @@ Transaction.prototype.isFullySigned = function() {
       );
     }
   });
-  return _.all(_.map(this.inputs, function(input) {
+  return _.every(_.map(this.inputs, function(input) {
     return input.isFullySigned();
   }));
 };

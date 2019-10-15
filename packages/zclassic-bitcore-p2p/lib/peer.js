@@ -47,6 +47,7 @@ function Peer(options) {
     return new Peer(options);
   }
 
+
   if (options.socket) {
     this.socket = options.socket;
     this.host = this.socket.remoteAddress;
@@ -58,6 +59,8 @@ function Peer(options) {
     this.status = Peer.STATUS.DISCONNECTED;
     this.port = options.port;
   }
+
+  console.log(this.host + '  ' +  this.status + '  ' + this.port);
 
   this.network = Networks.get(options.network) || Networks.defaultNetwork;
 
@@ -109,7 +112,7 @@ function Peer(options) {
 }
 util.inherits(Peer, EventEmitter);
 
-Peer.MAX_RECEIVE_BUFFER = 5000;
+Peer.MAX_RECEIVE_BUFFER = 1024 * 1024 * 1024;
 Peer.STATUS = {
   DISCONNECTED: 'disconnected',
   CONNECTING: 'connecting',

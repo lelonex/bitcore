@@ -143,25 +143,17 @@ addNetwork({
   zaddr: 0x169a, 
   zkey: 0xab36, 
   networkMagic: 0x24e92764,
-  port: 8033
-/*,
+  port: 8033 
+  ,
   dnsSeeds: [
+  '159.65.179.43',
+  '165.22.226.216',
+  'dnsseed.zclcore.com',
 	'dnsseed.zcl.community',
-	'dnsseed.zclassic.org',
-	'na1.zclassic.org',
-	'na2.zclassic.org',
-	'na3.zclassic.org',
-	'eu1.zclassic.org',
-	'eu2.zclassic.org',
-	'eu3.zclassic.org',
-	'as1.zclassic.org',
-	'as2.zclassic.org',
-	'as3.zclassic.org',
 	'seed.zcl.chains.run',
 	'dnsseed.indieonion.org',
 	'dnsseed.rotorproject.org'
-  ]*/
-
+  ]
 });
 
 /**

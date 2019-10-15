@@ -9,7 +9,7 @@ var Hash = require('../crypto/hash');
 var JSUtil = require('../util/js');
 var $ = require('../util/preconditions');
 
-var GENESIS_BITS = 0x2003ffff;
+var GENESIS_BITS = 0x1f07ffff;
 
 /**
  * Instantiate a BlockHeader from a Buffer, JSON object, or Object with
@@ -27,7 +27,7 @@ var BlockHeader = function BlockHeader(arg) {
   this.version = info.version;
   this.prevHash = info.prevHash;
   this.merkleRoot = info.merkleRoot;
-  this.reserved = info.reserved;
+  this.finalSaplingRoot = info.finalSaplingRoot;
   this.time = info.time;
   this.timestamp = info.time;
   this.bits = info.bits;
@@ -71,30 +71,30 @@ BlockHeader._fromObject = function _fromObject(data) {
   $.checkArgument(data, 'data is required');
   var prevHash = data.prevHash;
   var merkleRoot = data.merkleRoot;
-  var reserved = data.reserved;
+  var finalSaplingRoot = data.finalSaplingRoot;
   var nonce = data.nonce;
   var solution = data.solution;
   if (_.isString(data.prevHash)) {
-    prevHash = BufferUtil.reverse(new Buffer(data.prevHash, 'hex'));
+    prevHash = BufferUtil.reverse(Buffer.from(data.prevHash, 'hex'));
   }
   if (_.isString(data.merkleRoot)) {
-    merkleRoot = BufferUtil.reverse(new Buffer(data.merkleRoot, 'hex'));
+    merkleRoot = BufferUtil.reverse(Buffer.from(data.merkleRoot, 'hex'));
   }
-  if (_.isString(data.reserved)) {
-    reserved = BufferUtil.reverse(new Buffer(data.reserved, 'hex'));
+  if (_.isString(data.finalSaplingRoot)) {
+    finalSaplingRoot = BufferUtil.reverse(Buffer.from(data.finalSaplingRoot, 'hex'));
   }
   if (_.isString(data.nonce)) {
-    nonce = BufferUtil.reverse(new Buffer(data.nonce, 'hex'));
+    nonce = BufferUtil.reverse(Buffer.from(data.nonce, 'hex'));
   }
   if (_.isString(data.solution)) {
-    solution = new Buffer(data.solution, 'hex');
+    solution = Buffer.from(data.solution, 'hex');
   }
   var info = {
     hash: data.hash,
     version: data.version,
     prevHash: prevHash,
     merkleRoot: merkleRoot,
-    reserved: reserved,
+    finalSaplingRoot: finalSaplingRoot,
     time: data.time,
     timestamp: data.time,
     bits: data.bits,
@@ -119,7 +119,7 @@ BlockHeader.fromObject = function fromObject(obj) {
  */
 BlockHeader.fromRawBlock = function fromRawBlock(data) {
   if (!BufferUtil.isBuffer(data)) {
-    data = new Buffer(data, 'binary');
+    data = Buffer.from(data, 'binary');
   }
   var br = BufferReader(data);
   br.pos = BlockHeader.Constants.START_OF_HEADER;
@@ -141,7 +141,7 @@ BlockHeader.fromBuffer = function fromBuffer(buf) {
  * @returns {BlockHeader} - An instance of block header
  */
 BlockHeader.fromString = function fromString(str) {
-  var buf = new Buffer(str, 'hex');
+  var buf = Buffer.from(str, 'hex');
   return BlockHeader.fromBuffer(buf);
 };
 
@@ -155,7 +155,7 @@ BlockHeader._fromBufferReader = function _fromBufferReader(br) {
   info.version = br.readUInt32LE();
   info.prevHash = br.read(32);
   info.merkleRoot = br.read(32);
-  info.reserved = br.read(32);
+  info.finalSaplingRoot = br.read(32);
   info.time = br.readUInt32LE();
   info.bits = br.readUInt32LE();
   info.nonce = br.read(32);
@@ -182,7 +182,7 @@ BlockHeader.prototype.toObject = BlockHeader.prototype.toJSON = function toObjec
     version: this.version,
     prevHash: BufferUtil.reverse(this.prevHash).toString('hex'),
     merkleRoot: BufferUtil.reverse(this.merkleRoot).toString('hex'),
-    reserved: BufferUtil.reverse(this.reserved).toString('hex'),
+    finalSaplingRoot: BufferUtil.reverse(this.finalSaplingRoot).toString('hex'),
     time: this.time,
     bits: this.bits,
     nonce: BufferUtil.reverse(this.nonce).toString('hex'),
@@ -215,7 +215,7 @@ BlockHeader.prototype.toBufferWriter = function toBufferWriter(bw) {
   bw.writeUInt32LE(this.version);
   bw.write(this.prevHash);
   bw.write(this.merkleRoot);
-  bw.write(this.reserved);
+  bw.write(this.finalSaplingRoot);
   bw.writeUInt32LE(this.time);
   bw.writeUInt32LE(this.bits);
   bw.write(this.nonce);
