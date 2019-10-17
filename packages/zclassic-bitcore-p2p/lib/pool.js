@@ -185,6 +185,7 @@ Pool.prototype._removeConnectedPeer = function _removeConnectedPeer(addr) {
  */
 Pool.prototype._connectPeer = function _connectPeer(addr) {
   var self = this;
+
   if (!this._connectedPeers[addr.hash]) {
     var port = addr.port || self.network.port;
     var ip = addr.ip.v4 || addr.ip.v6;

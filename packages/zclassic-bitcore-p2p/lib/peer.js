@@ -5,12 +5,10 @@ var EventEmitter = require('events').EventEmitter;
 var Net = require('net');
 var Socks5Client = require('socks5-client');
 var bitcore = require('zclassic-bitcore-lib');
-var bcoin = require('bcoin');
 var Networks = bitcore.Networks;
 var Messages = require('./messages');
 var $ = bitcore.util.preconditions;
 var util = require('util');
-var crypto = require('crypto');
 
 /**
  * The Peer constructor will create an instance of Peer to send and receive messages
@@ -47,7 +45,6 @@ function Peer(options) {
     return new Peer(options);
   }
 
-
   if (options.socket) {
     this.socket = options.socket;
     this.host = this.socket.remoteAddress;
@@ -60,8 +57,6 @@ function Peer(options) {
     this.port = options.port;
   }
 
-  console.log(this.host + '  ' +  this.status + '  ' + this.port);
-
   this.network = Networks.get(options.network) || Networks.defaultNetwork;
 
   if (!this.port) {
@@ -70,8 +65,8 @@ function Peer(options) {
 
   this.messages = options.messages || new Messages({
     network: this.network,
-    Block: bcoin.block,
-    Transaction: bcoin.tx
+    Block: bitcore.Block,
+    Transaction: bitcore.Transaction
   });
 
   this.dataBuffer = new Buffers();
@@ -150,7 +145,7 @@ Peer.prototype.connect = function() {
     self.emit('connect');
     self._sendVersion();
   });
-  
+
   this._addSocketEventHandlers();
   this.socket.connect(this.port, this.host);
   return this;
@@ -205,7 +200,8 @@ Peer.prototype.sendMessage = function(message) {
 Peer.prototype._sendVersion = function() {
   // todo: include sending local ip address
   var message = this.messages.Version({relay: this.relay});
-  this.sendMessage(message);  
+  this.versionSent = true;
+  this.sendMessage(message);
 };
 
 /**
