@@ -8,12 +8,13 @@
 ### Requirements
 
 - Trusted P2P Peer
+  https://github.com/ZclassicCommunity/zclassic/blob/master/README.md
 - MongoDB Server >= v3.4
 
 ### Checkout the repo
 
 ```sh
-git clone git@github.com:bitpay/bitcore.git
+git clone git@github.com:lelonex/bitcore.git
 git checkout master
 npm install
 ```
@@ -29,69 +30,28 @@ npm install
 ```json
 {
   "bitcoreNode": {
-    "chains": {
-      "BTC": {
-        "mainnet": {
-          "chainSource": "p2p",
-          "trustedPeers": [
-            {
-              "host": "127.0.0.1",
-              "port": 20008
-            }
-          ],
-          "rpc": {
-            "host": "127.0.0.1",
-            "port": 20009,
-            "username": "username",
-            "password": "password"
-          }
-        },
-        "regtest": {
-          "chainSource": "p2p",
-          "trustedPeers": [
-            {
-              "host": "127.0.0.1",
-              "port": 20020
-            }
-          ],
-          "rpc": {
-            "host": "127.0.0.1",
-            "port": 20021,
-            "username": "username",
-            "password": "password"
-          }
+    "services": {
+      "api": {
+        "wallets": {
+          "allowCreationBeforeCompleteSync": true
         }
-      },
-      "BCH": {
+      }
+    },
+    "chains": {
+      "ZCL": {
         "mainnet": {
-          "parentChain": "BTC",
-          "forkHeight": 478558,
-          "trustedPeers": [
-            {
-              "host": "127.0.0.1",
-              "port": 30008
-            }
-          ],
-          "rpc": {
-            "host": "127.0.0.1",
-            "port": 30009,
-            "username": "username",
-            "password": "password"
-          }
-        },
-        "regtest": {
           "chainSource": "p2p",
           "trustedPeers": [
             {
               "host": "127.0.0.1",
-              "port": 30020
+              "port": 8033 
             }
-          ],
+          ],	
           "rpc": {
             "host": "127.0.0.1",
-            "port": 30021,
-            "username": "username",
-            "password": "password"
+            "port": 8023,
+            "username": "zclassic",
+            "password": "zclassic"
           }
         }
       }
@@ -105,40 +65,37 @@ npm install
 ### 2. Setup Bitcoin Node
 
 <details>
-<summary>Example Bitcoin Mainnet Config</summary>
+<summary>Example Zclassic Mainnet Config</summary>
 
 ```sh
 whitelist=127.0.0.1
+gen=0
+equihashsolver=tromp
+listenonion=0
 txindex=0
 listen=1
 server=1
 irc=1
 upnp=1
 
-# Make sure port & rpcport matches the
-# bitcore.config.json ports for BTC mainnet
-
-# if using Bitcoin Core v0.17+ prefix
-# [main]
-
-port=20008
-rpcport=20009
+port=8033
+rpcport=8023
 rpcallowip=127.0.0.1
 
-rpcuser=username
-rpcpassword=password
+rpcuser=zclassic
+rpcpassword=zclassic
 ```
 
 </details>
 
-### 3. Run Bitcoin node
+### 3. Run Zclassic node
 
 <details>
-<summary>Example Starting a Bitcoin Node</summary>
+<summary>Starting a Zclassic Node</summary>
 
 ```sh
-# Path to your bitcoin application and path to the config above
-/Applications/Bitcoin-Qt.app/Contents/MacOS/Bitcoin-Qt -datadir=/Users/username/blockchains/bitcoin-core/networks/mainnet/
+# for more details
+https://github.com/ZclassicCommunity/zclassic/blob/master/README.md
 ```
 
 </details>
@@ -164,10 +121,12 @@ npm run node
 - [Bitcore ECIES](https://github.com/bitpay/bitcore-ecies) - Uses ECIES symmetric key negotiation from public keys to encrypt arbitrarily long data streams
 - [Bitcore Lib](packages/bitcore-lib) - A pure and powerful JavaScript Bitcoin library
 - [Bitcore Lib Cash](packages/bitcore-lib-cash) - A pure and powerful JavaScript Bitcoin Cash library
+- [Bitcore Lib Zclassic](packages/zclassic-bitcore-lib) - A pure and powerful JavaScript Zclassic library
 - [Bitcore Message](https://github.com/bitpay/bitcore-message) - Bitcoin message verification and signing
 - [Bitcore Mnemonic](packages/bitcore-mnemonic) - Implements mnemonic code for generating deterministic keys
 - [Bitcore P2P](packages/bitcore-p2p) - The peer-to-peer networking protocol for BTC
 - [Bitcore P2P Cash](packages/bitcore-p2p-cash) - The peer-to-peer networking protocol for BCH
+- [Bitcore P2P Zclassic](packages/zclassic-bitcore-p2p) - The peer-to-peer networking protocol for ZCL
 - [Crypto Wallet Core](packages/crypto-wallet-core) - A coin-agnostic wallet library for creating transactions, signing, and address derivation
 
 ## Extras
