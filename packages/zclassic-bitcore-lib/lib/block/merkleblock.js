@@ -1,320 +1,272 @@
 'use strict';
 
 var _ = require('lodash');
-var BN = require('../crypto/bn');
+var BlockHeader = require('./blockheader');
 var BufferUtil = require('../util/buffer');
 var BufferReader = require('../encoding/bufferreader');
 var BufferWriter = require('../encoding/bufferwriter');
 var Hash = require('../crypto/hash');
 var JSUtil = require('../util/js');
+var Transaction = require('../transaction');
 var $ = require('../util/preconditions');
 
-var GENESIS_BITS = 0x1f07ffff;
-
 /**
- * Instantiate a BlockHeader from a Buffer, JSON object, or Object with
- * the properties of the BlockHeader
+ * Instantiate a MerkleBlock from a Buffer, JSON object, or Object with
+ * the properties of the Block
  *
- * @param {*} - A Buffer, JSON string, or Object
- * @returns {BlockHeader} - An instance of block header
+ * @param {*} - A Buffer, JSON string, or Object representing a MerkleBlock
+ * @returns {MerkleBlock}
  * @constructor
  */
-var BlockHeader = function BlockHeader(arg) {
-  if (!(this instanceof BlockHeader)) {
-    return new BlockHeader(arg);
-  }
-  var info = BlockHeader._from(arg);
-  this.version = info.version;
-  this.prevHash = info.prevHash;
-  this.merkleRoot = info.merkleRoot;
-  this.finalSaplingRoot = info.finalSaplingRoot;
-  this.time = info.time;
-  this.timestamp = info.time;
-  this.bits = info.bits;
-  this.nonce = info.nonce;
-  this.solution = info.solution;
+function MerkleBlock(arg) {
+  /* jshint maxstatements: 18 */
 
-  if (info.hash) {
-    $.checkState(
-      this.hash === info.hash,
-      'Argument object hash property does not match block hash.'
-    );
+  if (!(this instanceof MerkleBlock)) {
+    return new MerkleBlock(arg);
   }
 
-  return this;
-};
-
-/**
- * @param {*} - A Buffer, JSON string or Object
- * @returns {Object} - An object representing block header data
- * @throws {TypeError} - If the argument was not recognized
- * @private
- */
-BlockHeader._from = function _from(arg) {
   var info = {};
   if (BufferUtil.isBuffer(arg)) {
-    info = BlockHeader._fromBufferReader(BufferReader(arg));
+    info = MerkleBlock._fromBufferReader(BufferReader(arg));
   } else if (_.isObject(arg)) {
-    info = BlockHeader._fromObject(arg);
+    var header;
+    if(arg.header instanceof BlockHeader) {
+      header = arg.header;
+    } else {
+      header = BlockHeader.fromObject(arg.header);
+    }
+    info = {
+      /**
+       * @name MerkleBlock#header
+       * @type {BlockHeader}
+       */
+      header: header,
+      /**
+       * @name MerkleBlock#numTransactions
+       * @type {Number}
+       */
+      numTransactions: arg.numTransactions,
+      /**
+       * @name MerkleBlock#hashes
+       * @type {String[]}
+       */
+      hashes: arg.hashes,
+      /**
+       * @name MerkleBlock#flags
+       * @type {Number[]}
+       */
+      flags: arg.flags
+    };
   } else {
-    throw new TypeError('Unrecognized argument for BlockHeader');
+    throw new TypeError('Unrecognized argument for MerkleBlock');
   }
-  return info;
+  _.extend(this,info);
+  this._flagBitsUsed = 0;
+  this._hashesUsed = 0;
+  return this;
+}
+
+/**
+ * @param {Buffer} - MerkleBlock data in a Buffer object
+ * @returns {MerkleBlock} - A MerkleBlock object
+ */
+MerkleBlock.fromBuffer = function fromBuffer(buf) {
+  return MerkleBlock.fromBufferReader(BufferReader(buf));
 };
 
 /**
- * @param {Object} - A JSON string
- * @returns {Object} - An object representing block header data
+ * @param {BufferReader} - MerkleBlock data in a BufferReader object
+ * @returns {MerkleBlock} - A MerkleBlock object
+ */
+MerkleBlock.fromBufferReader = function fromBufferReader(br) {
+  return new MerkleBlock(MerkleBlock._fromBufferReader(br));
+};
+
+/**
+ * @returns {Buffer} - A buffer of the block
+ */
+MerkleBlock.prototype.toBuffer = function toBuffer() {
+  return this.toBufferWriter().concat();
+};
+
+/**
+ * @param {BufferWriter} - An existing instance of BufferWriter
+ * @returns {BufferWriter} - An instance of BufferWriter representation of the MerkleBlock
+ */
+MerkleBlock.prototype.toBufferWriter = function toBufferWriter(bw) {
+  if (!bw) {
+    bw = new BufferWriter();
+  }
+  bw.write(this.header.toBuffer());
+  bw.writeUInt32LE(this.numTransactions);
+  bw.writeVarintNum(this.hashes.length);
+  for (var i = 0; i < this.hashes.length; i++) {
+    bw.write(Buffer.from(this.hashes[i], 'hex'));
+  }
+  bw.writeVarintNum(this.flags.length);
+  for (i = 0; i < this.flags.length; i++) {
+    bw.writeUInt8(this.flags[i]);
+  }
+  return bw;
+};
+
+/**
+ * @returns {Object} - A plain object with the MerkleBlock properties
+ */
+MerkleBlock.prototype.toObject = MerkleBlock.prototype.toJSON = function toObject() {
+  return {
+    header: this.header.toObject(),
+    numTransactions: this.numTransactions,
+    hashes: this.hashes,
+    flags: this.flags
+  };
+};
+
+/**
+ * Verify that the MerkleBlock is valid
+ * @returns {Boolean} - True/False whether this MerkleBlock is Valid
+ */
+MerkleBlock.prototype.validMerkleTree = function validMerkleTree() {
+  $.checkState(_.isArray(this.flags), 'MerkleBlock flags is not an array');
+  $.checkState(_.isArray(this.hashes), 'MerkleBlock hashes is not an array');
+
+  // Can't have more hashes than numTransactions
+  if(this.hashes.length > this.numTransactions) {
+    return false;
+  }
+
+  // Can't have more flag bits than num hashes
+  if(this.flags.length * 8 < this.hashes.length) {
+    return false;
+  }
+
+  var height = this._calcTreeHeight();
+  var opts = { hashesUsed: 0, flagBitsUsed: 0 };
+  var root = this._traverseMerkleTree(height, 0, opts);
+  if(opts.hashesUsed !== this.hashes.length) {
+    return false;
+  }
+  return BufferUtil.equals(root, this.header.merkleRoot);
+};
+
+/**
+ * Traverse a the tree in this MerkleBlock, validating it along the way
+ * Modeled after Bitcoin Core merkleblock.cpp TraverseAndExtract()
+ * @param {Number} - depth - Current height
+ * @param {Number} - pos - Current position in the tree
+ * @param {Object} - opts - Object with values that need to be mutated throughout the traversal
+ * @param {Number} - opts.flagBitsUsed - Number of flag bits used, should start at 0
+ * @param {Number} - opts.hashesUsed - Number of hashes used, should start at 0
+ * @param {Array} - opts.txs - Will finish populated by transactions found during traversal
+ * @returns {Buffer|null} - Buffer containing the Merkle Hash for that height
  * @private
  */
-BlockHeader._fromObject = function _fromObject(data) {
-  $.checkArgument(data, 'data is required');
-  var prevHash = data.prevHash;
-  var merkleRoot = data.merkleRoot;
-  var finalSaplingRoot = data.finalSaplingRoot;
-  var nonce = data.nonce;
-  var solution = data.solution;
-  if (_.isString(data.prevHash)) {
-    prevHash = BufferUtil.reverse(Buffer.from(data.prevHash, 'hex'));
+MerkleBlock.prototype._traverseMerkleTree = function traverseMerkleTree(depth, pos, opts) {
+  /* jshint maxcomplexity:  12*/
+  /* jshint maxstatements: 20 */
+
+  opts = opts || {};
+  opts.txs = opts.txs || [];
+  opts.flagBitsUsed = opts.flagBitsUsed || 0;
+  opts.hashesUsed = opts.hashesUsed || 0;
+
+  if(opts.flagBitsUsed > this.flags.length * 8) {
+    return null;
   }
-  if (_.isString(data.merkleRoot)) {
-    merkleRoot = BufferUtil.reverse(Buffer.from(data.merkleRoot, 'hex'));
+  var isParentOfMatch = (this.flags[opts.flagBitsUsed >> 3] >>> (opts.flagBitsUsed++ & 7)) & 1;
+  if(depth === 0 || !isParentOfMatch) {
+    if(opts.hashesUsed >= this.hashes.length) {
+      return null;
+    }
+    var hash = this.hashes[opts.hashesUsed++];
+    if(depth === 0 && isParentOfMatch) {
+      opts.txs.push(hash);
+    }
+    return Buffer.from(hash, 'hex');
+  } else {
+    var left = this._traverseMerkleTree(depth-1, pos*2, opts);
+    var right = left;
+    if(pos*2+1 < this._calcTreeWidth(depth-1)) {
+      right = this._traverseMerkleTree(depth-1, pos*2+1, opts);
+    }
+    return Hash.sha256sha256(new Buffer.concat([left, right]));
   }
-  if (_.isString(data.finalSaplingRoot)) {
-    finalSaplingRoot = BufferUtil.reverse(Buffer.from(data.finalSaplingRoot, 'hex'));
+};
+
+/** Calculates the width of a merkle tree at a given height.
+ *  Modeled after Bitcoin Core merkleblock.h CalcTreeWidth()
+ * @param {Number} - Height at which we want the tree width
+ * @returns {Number} - Width of the tree at a given height
+ * @private
+ */
+MerkleBlock.prototype._calcTreeWidth = function calcTreeWidth(height) {
+  return (this.numTransactions + (1 << height) - 1) >> height;
+};
+
+/** Calculates the height of the merkle tree in this MerkleBlock
+ * @param {Number} - Height at which we want the tree width
+ * @returns {Number} - Height of the merkle tree in this MerkleBlock
+ * @private
+ */
+MerkleBlock.prototype._calcTreeHeight = function calcTreeHeight() {
+  var height = 0;
+  while (this._calcTreeWidth(height) > 1) {
+    height++;
   }
-  if (_.isString(data.nonce)) {
-    nonce = BufferUtil.reverse(Buffer.from(data.nonce, 'hex'));
+  return height;
+};
+
+/**
+ * @param {Transaction|String} - Transaction or Transaction ID Hash
+ * @returns {Boolean} - return true/false if this MerkleBlock has the TX or not
+ * @private
+ */
+MerkleBlock.prototype.hasTransaction = function hasTransaction(tx) {
+  $.checkArgument(!_.isUndefined(tx), 'tx cannot be undefined');
+  $.checkArgument(tx instanceof Transaction || typeof tx === 'string',
+      'Invalid tx given, tx must be a "string" or "Transaction"');
+
+  var hash = tx;
+  if(tx instanceof Transaction) {
+    // We need to reverse the id hash for the lookup
+    hash = BufferUtil.reverse(Buffer.from(tx.id, 'hex')).toString('hex');
   }
-  if (_.isString(data.solution)) {
-    solution = Buffer.from(data.solution, 'hex');
+
+  var txs = [];
+  var height = this._calcTreeHeight();
+  this._traverseMerkleTree(height, 0, { txs: txs });
+  return txs.indexOf(hash) !== -1;
+};
+
+/**
+ * @param {Buffer} - MerkleBlock data
+ * @returns {Object} - An Object representing merkleblock data
+ * @private
+ */
+MerkleBlock._fromBufferReader = function _fromBufferReader(br) {
+  $.checkState(!br.finished(), 'No merkleblock data received');
+  var info = {};
+  info.header = BlockHeader.fromBufferReader(br);
+  info.numTransactions = br.readUInt32LE();
+  var numHashes = br.readVarintNum();
+  info.hashes = [];
+  for (var i = 0; i < numHashes; i++) {
+    info.hashes.push(br.read(32).toString('hex'));
   }
-  var info = {
-    hash: data.hash,
-    version: data.version,
-    prevHash: prevHash,
-    merkleRoot: merkleRoot,
-    finalSaplingRoot: finalSaplingRoot,
-    time: data.time,
-    timestamp: data.time,
-    bits: data.bits,
-    nonce: nonce,
-    solution: solution
-  };
+  var numFlags = br.readVarintNum();
+  info.flags = [];
+  for (i = 0; i < numFlags; i++) {
+    info.flags.push(br.readUInt8());
+  }
   return info;
 };
 
 /**
  * @param {Object} - A plain JavaScript object
- * @returns {BlockHeader} - An instance of block header
+ * @returns {Block} - An instance of block
  */
-BlockHeader.fromObject = function fromObject(obj) {
-  var info = BlockHeader._fromObject(obj);
-  return new BlockHeader(info);
+MerkleBlock.fromObject = function fromObject(obj) {
+  return new MerkleBlock(obj);
 };
 
-/**
- * @param {Binary} - Raw block binary data or buffer
- * @returns {BlockHeader} - An instance of block header
- */
-BlockHeader.fromRawBlock = function fromRawBlock(data) {
-  if (!BufferUtil.isBuffer(data)) {
-    data = Buffer.from(data, 'binary');
-  }
-  var br = BufferReader(data);
-  br.pos = BlockHeader.Constants.START_OF_HEADER;
-  var info = BlockHeader._fromBufferReader(br);
-  return new BlockHeader(info);
-};
-
-/**
- * @param {Buffer} - A buffer of the block header
- * @returns {BlockHeader} - An instance of block header
- */
-BlockHeader.fromBuffer = function fromBuffer(buf) {
-  var info = BlockHeader._fromBufferReader(BufferReader(buf));
-  return new BlockHeader(info);
-};
-
-/**
- * @param {string} - A hex encoded buffer of the block header
- * @returns {BlockHeader} - An instance of block header
- */
-BlockHeader.fromString = function fromString(str) {
-  var buf = Buffer.from(str, 'hex');
-  return BlockHeader.fromBuffer(buf);
-};
-
-/**
- * @param {BufferReader} - A BufferReader of the block header
- * @returns {Object} - An object representing block header data
- * @private
- */
-BlockHeader._fromBufferReader = function _fromBufferReader(br) {
-  var info = {};
-  info.version = br.readUInt32LE();
-  info.prevHash = br.read(32);
-  info.merkleRoot = br.read(32);
-  info.finalSaplingRoot = br.read(32);
-  info.time = br.readUInt32LE();
-  info.bits = br.readUInt32LE();
-  info.nonce = br.read(32);
-  var lenSolution = br.readVarintNum();
-  info.solution = br.read(lenSolution);
-  return info;
-};
-
-/**
- * @param {BufferReader} - A BufferReader of the block header
- * @returns {BlockHeader} - An instance of block header
- */
-BlockHeader.fromBufferReader = function fromBufferReader(br) {
-  var info = BlockHeader._fromBufferReader(br);
-  return new BlockHeader(info);
-};
-
-/**
- * @returns {Object} - A plain object of the BlockHeader
- */
-BlockHeader.prototype.toObject = BlockHeader.prototype.toJSON = function toObject() {
-  return {
-    hash: this.hash,
-    version: this.version,
-    prevHash: BufferUtil.reverse(this.prevHash).toString('hex'),
-    merkleRoot: BufferUtil.reverse(this.merkleRoot).toString('hex'),
-    finalSaplingRoot: BufferUtil.reverse(this.finalSaplingRoot).toString('hex'),
-    time: this.time,
-    bits: this.bits,
-    nonce: BufferUtil.reverse(this.nonce).toString('hex'),
-    solution: this.solution.toString('hex')
-  };
-};
-
-/**
- * @returns {Buffer} - A Buffer of the BlockHeader
- */
-BlockHeader.prototype.toBuffer = function toBuffer() {
-  return this.toBufferWriter().concat();
-};
-
-/**
- * @returns {string} - A hex encoded string of the BlockHeader
- */
-BlockHeader.prototype.toString = function toString() {
-  return this.toBuffer().toString('hex');
-};
-
-/**
- * @param {BufferWriter} - An existing instance BufferWriter
- * @returns {BufferWriter} - An instance of BufferWriter representation of the BlockHeader
- */
-BlockHeader.prototype.toBufferWriter = function toBufferWriter(bw) {
-  if (!bw) {
-    bw = new BufferWriter();
-  }
-  bw.writeUInt32LE(this.version);
-  bw.write(this.prevHash);
-  bw.write(this.merkleRoot);
-  bw.write(this.finalSaplingRoot);
-  bw.writeUInt32LE(this.time);
-  bw.writeUInt32LE(this.bits);
-  bw.write(this.nonce);
-  bw.writeVarintNum(this.solution.length);
-  bw.write(this.solution);
-  return bw;
-};
-
-/**
- * Returns the target difficulty for this block
- * @param {Number} bits
- * @returns {BN} An instance of BN with the decoded difficulty bits
- */
-BlockHeader.prototype.getTargetDifficulty = function getTargetDifficulty(bits) {
-  bits = bits || this.bits;
-
-  var target = new BN(bits & 0xffffff);
-  var mov = 8 * ((bits >>> 24) - 3);
-  while (mov-- > 0) {
-    target = target.mul(new BN(2));
-  }
-  return target;
-};
-
-/**
- * @link https://en.bitcoin.it/wiki/Difficulty
- * @return {Number}
- */
-BlockHeader.prototype.getDifficulty = function getDifficulty() {
-  var difficulty1TargetBN = this.getTargetDifficulty(GENESIS_BITS).mul(new BN(Math.pow(10, 8)));
-  var currentTargetBN = this.getTargetDifficulty();
-
-  var difficultyString = difficulty1TargetBN.div(currentTargetBN).toString(10);
-  var decimalPos = difficultyString.length - 8;
-  difficultyString = difficultyString.slice(0, decimalPos) + '.' + difficultyString.slice(decimalPos);
-
-  return parseFloat(difficultyString);
-};
-
-/**
- * @returns {Buffer} - The little endian hash buffer of the header
- */
-BlockHeader.prototype._getHash = function hash() {
-  var buf = this.toBuffer();
-  return Hash.sha256sha256(buf);
-};
-
-var idProperty = {
-  configurable: false,
-  enumerable: true,
-  /**
-   * @returns {string} - The big endian hash buffer of the header
-   */
-  get: function() {
-    if (!this._id) {
-      this._id = BufferReader(this._getHash()).readReverse().toString('hex');
-    }
-    return this._id;
-  },
-  set: _.noop
-};
-Object.defineProperty(BlockHeader.prototype, 'id', idProperty);
-Object.defineProperty(BlockHeader.prototype, 'hash', idProperty);
-
-/**
- * @returns {Boolean} - If timestamp is not too far in the future
- */
-BlockHeader.prototype.validTimestamp = function validTimestamp() {
-  var currentTime = Math.round(new Date().getTime() / 1000);
-  if (this.time > currentTime + BlockHeader.Constants.MAX_TIME_OFFSET) {
-    return false;
-  }
-  return true;
-};
-
-/**
- * @returns {Boolean} - If the proof-of-work hash satisfies the target difficulty
- */
-BlockHeader.prototype.validProofOfWork = function validProofOfWork() {
-  var pow = new BN(this.id, 'hex');
-  var target = this.getTargetDifficulty();
-
-  if (pow.cmp(target) > 0) {
-    return false;
-  }
-  return true;
-};
-
-/**
- * @returns {string} - A string formatted for the console
- */
-BlockHeader.prototype.inspect = function inspect() {
-  return '<BlockHeader ' + this.id + '>';
-};
-
-BlockHeader.Constants = {
-  START_OF_HEADER: 8, // Start buffer position in raw block data
-  MAX_TIME_OFFSET: 2 * 60 * 60, // The max a timestamp can be in the future
-  LARGEST_HASH: new BN('10000000000000000000000000000000000000000000000000000000000000000', 'hex')
-};
-
-module.exports = BlockHeader;
+module.exports = MerkleBlock;
