@@ -14,7 +14,8 @@ const Constants = Common.Constants,
 const Bitcore = {
   btc: require('bitcore-lib'),
   bch: require('bitcore-lib-cash'),
-  eth: require('bitcore-lib')
+  eth: require('bitcore-lib'),
+  zcl: require('zclassic-bitcore-lib')
 };
 
 export interface IWallet {
@@ -205,7 +206,7 @@ export class Wallet {
       this.network +
       this.coin +
       salt;
-    seed = bitcore.crypto.Hash.sha256(Buffer.from(seed));
+    seed = bitcore.crypto.Hash.sha256(new Buffer(seed));
     const priv = bitcore.PrivateKey(seed, this.network);
 
     this.beAuthPrivateKey2 = priv.toString();

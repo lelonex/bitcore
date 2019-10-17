@@ -34,7 +34,7 @@ export class Utils {
    * the hash is calculated there? */
   static hashMessage(text, noReverse) {
     $.checkArgument(text);
-    const buf = Buffer.from(text);
+    const buf = new Buffer(text);
     let ret = crypto.Hash.sha256sha256(buf);
     if (!noReverse) {
       ret = new bitcore.encoding.BufferReader(ret).readReverse();
@@ -64,7 +64,7 @@ export class Utils {
     let publicKeyBuffer = publicKey;
     try {
       if (!Buffer.isBuffer(publicKey)) {
-        publicKeyBuffer = Buffer.from(publicKey, 'hex');
+        publicKeyBuffer = new Buffer(publicKey, 'hex');
       }
       return publicKeyBuffer;
     } catch (e) {
@@ -76,7 +76,7 @@ export class Utils {
     try {
       let signatureBuffer = signature;
       if (!Buffer.isBuffer(signature)) {
-        signatureBuffer = Buffer.from(signature, 'hex');
+        signatureBuffer = new Buffer(signature, 'hex');
       }
       return secp256k1.signatureImport(signatureBuffer);
     } catch (e) {

@@ -1,6 +1,7 @@
 import * as async from 'async';
 import * as _ from 'lodash';
 import * as log from 'npmlog';
+import 'source-map-support/register';
 
 import { BlockChainExplorer } from './blockchainexplorer';
 import { V8 } from './blockchainexplorers/v8';
@@ -2645,7 +2646,7 @@ export class WalletService {
               );
           }
 
-          if (_.isNumber(opts.fee) && _.isEmpty(opts.inputs))
+          if (_.isNumber(opts.fee) && _.isEmpty(opts.inputs) && wallet.isUTXOCoin())
             return next(
               new ClientError('fee can only be set when inputs are specified')
             );
@@ -2893,6 +2894,7 @@ export class WalletService {
                 (next) => {
                   if (_.isNumber(opts.fee) && !_.isEmpty(opts.inputs))
                     return next();
+
                   this._getFeePerKb(wallet, opts, (err, inFeePerKb) => {
                     feePerKb = inFeePerKb;
                     if (! wallet.isUTXOCoin()) {
@@ -2909,6 +2911,12 @@ export class WalletService {
                         gasPrice
                       },
                         (err, inGasLimit) => {
+                          if (_.isNumber(opts.fee)) {
+                            // This is used for sendmax
+                            gasPrice = feePerKb =
+                              Number((opts.fee /  (inGasLimit || Defaults.DEFAULT_GAS_LIMIT)).toFixed());
+                          }
+
                           gasLimit = inGasLimit || Defaults.DEFAULT_GAS_LIMIT;
                           opts.fee = feePerKb * gasLimit;
                           return next();
@@ -3633,7 +3641,7 @@ export class WalletService {
       if (err) return cb(err);
 
       async.map(
-        [wallet.network, this.walletId],
+        [`${wallet.coin}:${wallet.network}`, this.walletId],
         (walletId, next) => {
           this.storage.fetchNotifications(
             walletId,
@@ -3892,7 +3900,7 @@ export class WalletService {
     });
   }
 
-  checkWalletSync(bc, wallet, cb) {
+  checkWalletSync(bc, wallet, simpleRun, cb) {
     if (!wallet.addressManager && !wallet.addressManager.receiveAddressIndex)
       return cb(null, true);
 
@@ -3906,6 +3914,10 @@ export class WalletService {
         log.debug('addresses checked already');
         return cb(null, true);
       }
+
+      // only check total number of addreses
+      if (simpleRun)
+        return cb();
 
       this.storage
         .walletCheck({ walletId: wallet.id })
@@ -3953,45 +3965,51 @@ export class WalletService {
         return cb(err);
       }
 
-      this.storage.fetchUnsyncAddresses(this.walletId, (err, addresses) => {
-        if (err) {
-          return cb(err);
-        }
+      // First
+      this.checkWalletSync(bc, wallet, true, (err, isOK) => {
+        // ignore err
+        if (isOK) return cb();
 
-        const syncAddr = (addresses, icb) => {
-          if (!addresses || _.isEmpty(addresses)) {
-            // this.logi('Addresses already sync');
-            return icb();
+        this.storage.fetchUnsyncAddresses(this.walletId, (err, addresses) => {
+          if (err) {
+            return cb(err);
           }
 
-          const addressStr = _.map(addresses, 'address');
-          this.logd('Syncing addresses: ', addressStr.length);
-          bc.addAddresses(wallet, addressStr, err => {
-            if (err) return cb(err);
-
-            this.storage.markSyncedAddresses(addressStr, icb);
-          });
-        };
-
-        syncAddr(addresses, err => {
-          if (skipCheck || doNotCheckV8) return cb();
-
-          this.checkWalletSync(bc, wallet, (err, isOK) => {
-            // ignore err
-            if (err) return cb();
-
-            if (isOK) return cb();
-
-            if (count++ >= 1) {
-              log.warn('## ERROR: TRIED TO SYNC WALLET AND FAILED. GIVING UP');
-              return cb();
+          const syncAddr = (addresses, icb) => {
+            if (!addresses || _.isEmpty(addresses)) {
+              // this.logi('Addresses already sync');
+              return icb();
             }
-            log.info('Trying to RESYNC wallet... count:' + count);
 
-            // Reset sync and sync again...
-            wallet.beRegistered = false;
-            this.storage.deregisterWallet(wallet.id, () => {
-              this.syncWallet(wallet, cb, false, count);
+            const addressStr = _.map(addresses, 'address');
+            this.logd('Syncing addresses: ', addressStr.length);
+            bc.addAddresses(wallet, addressStr, err => {
+              if (err) return cb(err);
+
+              this.storage.markSyncedAddresses(addressStr, icb);
+            });
+          };
+
+          syncAddr(addresses, err => {
+            if (skipCheck || doNotCheckV8) return cb();
+
+            this.checkWalletSync(bc, wallet, false, (err, isOK) => {
+              // ignore err
+              if (err) return cb();
+
+              if (isOK) return cb();
+
+              if (count++ >= 1) {
+                log.warn('## ERROR: TRIED TO SYNC WALLET AND FAILED. GIVING UP');
+                return cb();
+              }
+              log.info('Trying to RESYNC wallet... count:' + count);
+
+              // Reset sync and sync again...
+              wallet.beRegistered = false;
+              this.storage.deregisterWallet(wallet.id, () => {
+                this.syncWallet(wallet, cb, false, count);
+              });
             });
           });
         });

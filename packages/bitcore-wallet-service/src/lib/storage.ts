@@ -129,6 +129,10 @@ export class Storage {
       copayerId: 1,
       txid: 1
     });
+    db.collection(collections.TX_CONFIRMATION_SUBS).createIndex({
+      isActive: 1,
+      copayerId: 1
+    });
     db.collection(collections.SESSIONS).createIndex({
       copayerId: 1
     });
@@ -138,6 +142,17 @@ export class Storage {
     opts = opts || {};
     if (this.db) return cb();
     const config = opts.mongoDb || {};
+
+    if (opts.secondaryPreferred) {
+      if (config.uri.indexOf('?') > 0) {
+        config.uri = config.uri + '&';
+      } else {
+        config.uri = config.uri + '?';
+      }
+      config.uri = config.uri + 'readPreference=secondaryPreferred';
+      log.info('Read operations set to secondaryPreferred');
+    }
+
     mongodb.MongoClient.connect(
       config.uri,
       (err, db) => {
@@ -147,7 +162,7 @@ export class Storage {
         }
         this.db = db;
 
-        log.info('Connection established to mongoDB');
+        log.info('Connection established to mongoDB:' + config.uri);
         Storage.createIndexes(db);
         return cb();
       }
