@@ -1,5 +1,6 @@
 import { BCHTxProvider } from './bch';
 import { BTCTxProvider } from './btc';
+import { ZCLTxProvider } from './zcl';
 import { ERC20TxProvider } from './erc20';
 import { ETHTxProvider } from './eth';
 
@@ -7,6 +8,7 @@ const providers = {
   BTC: new BTCTxProvider(),
   BCH: new BCHTxProvider(),
   ETH: new ETHTxProvider(),
+  ZCL: new ZCLTxProvider(),
   ERC20: new ERC20TxProvider()
 };
 

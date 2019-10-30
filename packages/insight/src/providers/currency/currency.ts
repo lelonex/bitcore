@@ -38,6 +38,9 @@ export class CurrencyProvider {
   public getConvertedNumber(value: number, chain): number {
     // TODO: Change this function to make use of satoshis so that we don't have to do all these roundabout conversions.
     switch (chain) {
+      case 'ZCL':
+          value = value * 1e-8;
+        break;
       case 'ETH':
           value = value * 1e-18;
         break;

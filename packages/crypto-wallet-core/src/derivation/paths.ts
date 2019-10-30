@@ -12,6 +12,11 @@ export const Paths = {
     livenet: "m/44'/60'/",
     testnet: "m/44'/60'/"
   },
+  ZCL: {
+    mainnet: "m/44'/147'/",
+    livenet: "m/44'/147'/",
+    testnet: "m/44'/147'/"
+  },
   default: {
     testnet: "m/44'/1'/"
   }

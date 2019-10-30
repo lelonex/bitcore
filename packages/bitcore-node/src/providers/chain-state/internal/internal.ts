@@ -577,6 +577,9 @@ export class InternalStateProvider implements CSP.IChainStateService {
   private isValidAddress(params): boolean {
     const { chain, network, input } = params;
     const addr = this.extractAddress(input);
+    console.log(addr);
+        console.log(chain);
+            console.log(network);
     return !!Validation.validateAddress(chain, network, addr);
   }
 
@@ -586,7 +589,7 @@ export class InternalStateProvider implements CSP.IChainStateService {
 
   private extractAddress(address: string): string {
     const extractedAddress = address
-      .replace(/^(bitcoincash:|bchtest:|bitcoin:)/i, '')
+      .replace(/^(bitcoincash:|bchtest:|bitcoin:|zclassic:)/i, '')
       .replace(/\?.*/, '');
     return extractedAddress || address;
   }

@@ -3,6 +3,10 @@ class LibProvider {
     BTC: {
       lib: require('bitcore-lib'),
       p2p: require('bitcore-p2p')
+    },
+    ZCL: {
+      lib: require('zclassic-bitcore-lib'),
+      p2p: require('zclassic-bitcore-p2p')
     }
   };
 

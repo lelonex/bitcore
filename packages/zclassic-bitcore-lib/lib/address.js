@@ -277,8 +277,14 @@ Address._transformString = function(data, network, type) {
     throw new TypeError('data parameter supplied is not a string.');
   }
   data = data.trim();
+
+  var info;
   var addressBuffer = Base58Check.decode(data);
-  var info = Address._transformBuffer(addressBuffer, network, type);
+  if (data.length === 35 && network) { // workaround
+    info = { hashBuffer: addressBuffer, network: network, type: type };
+  } else {
+    info = Address._transformBuffer(addressBuffer, network, type);
+  }   
   return info;
 };
 
