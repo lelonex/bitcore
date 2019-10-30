@@ -28,9 +28,9 @@ export class DenominationComponent {
       ? true
       : false;
     this.units = [
-      'USD',
-      this.api.networkSettings.selectedNetwork.chain,
-      'm' + this.api.networkSettings.selectedNetwork.chain
+      // 'USD',
+      this.api.networkSettings.selectedNetwork.chain // ,
+      // 'm' + this.api.networkSettings.selectedNetwork.chain
     ];
   }
 

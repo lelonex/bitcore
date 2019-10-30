@@ -32,7 +32,7 @@ export class PriceProvider {
           ratesAPI = this.api.ratesAPI.eth;
           break;
         case 'ZCL':
-          ratesAPI = this.api.ratesAPI.eth;
+          ratesAPI = this.api.ratesAPI.btc;
           break;
       }
       this.api.httpClient.get(ratesAPI).subscribe(
